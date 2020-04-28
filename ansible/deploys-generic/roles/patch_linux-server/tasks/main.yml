@@ -1,0 +1,238 @@
+---
+- name: Slack notification, beginning server patching
+  slack:
+    token: "{{ slack_token }}"
+    channel: "{{ slack_channel }}"
+    msg: "{{ inventory_hostname }}: Beginning Server Patching"
+    username: "{{ slack_username }}"
+    link_names: 0
+    parse: 'none'
+    color: 'good'
+  delegate_to: localhost
+
+- name: Take backup of my.cnf file
+  synchronize:
+    src: /etc/my.cnf
+    dest: /opt/my.cnf
+  delegate_to: "{{ inventory_hostname }}"
+  when: "'_db' in configs_target"
+
+- name: Take backup of logrotate file
+  synchronize:
+    src: /etc/logrotate.d/mysql
+    dest: /opt/mysql
+  delegate_to: "{{ inventory_hostname }}"
+  when: "'_db' in configs_target"
+
+- name: Remove backup directory if exists
+  file:
+    path: /opt/repos_orig
+    state: absent
+
+- name: Create backup directory
+  file:
+    path: /opt/repos_orig
+    state: directory
+
+- name: Check installed Percona-Server packages     # Percona packages conflicts during patching, we'll re-install later. 
+  shell: "rpm -qa --queryformat='%{NAME}\n' | grep Percona-Server"
+  register: grep_result
+  ignore_errors: true
+  args:
+    warn: False
+  when: "'_db' in configs_target"
+
+- name: Remove existing Percona-Server packages
+  yum:
+    pkg: "{{ grep_result.stdout_lines }}"
+    state: absent
+  when: "'_db' in configs_target and grep_result.changed"
+
+- name: Remove Percona-release package
+  yum:
+    name: percona-release
+    state: absent
+  when: "'_db' in configs_target and grep_result.changed"
+
+- name: Find existing repo files
+  find:
+    paths: /etc/yum.repos.d/
+    patterns: "*.repo"
+  register: existing_repos
+
+- name: Take backup of existing repos
+  shell: 'cp -r /etc/yum.repos.d/*.repo /opt/repos_orig/'
+  ignore_errors: true
+
+- name: Remove existing repo files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  with_items: "{{ existing_repos.files }}"
+
+- name: Create local repositories
+  yum_repository:
+    name: "{{ item }}"
+    description: "{{ item }}"
+    baseurl: http://{{ local_repo_server }}/repos/{{ item }}
+    enabled: yes
+    gpgcheck: no
+  with_items:
+    - base          # Add/ Remove relevant repositories pertaining to your infrastructure
+    - centosplus
+    - extras
+    - epel
+    - ius
+
+- name: Create Percona repository (if required)
+  yum_repository:
+    name: percona
+    description: XD Percona Repo
+    baseurl: http://{{ local_repo_server }}/repos/percona
+    enabled: yes
+    gpgcheck: no
+  when: "'_db' in configs_target"
+
+- name: Clear yum metadata
+  command: yum clean metadata
+  args:
+    warn: False
+
+- name: Enable newly configured repos
+  command: yum repolist
+  args:
+    warn: False
+
+- name: Reinstall Percona-Server packages
+  yum:
+    pkg: "{{ grep_result.stdout_lines }}"
+    state: present
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: "'_db' in configs_target and grep_result.changed"
+
+- name: Stop the Haproxy service
+  systemd:
+    name: haproxy
+    state: stopped
+  when: "'_haproxy' in configs_target"
+
+- name: Stop the Keepalived service
+  systemd:
+    name: keepalived
+    state: stopped
+  when: "'_haproxy' in configs_target"
+
+- name: Upgrade all packages
+  yum:
+    name: '*'
+    state: latest
+  retries: 3
+  delay: 5
+  register: upgrade_result
+  until: upgrade_result is succeeded
+
+- name: Reboot post OS upgrade
+  shell: "sleep 5 && reboot"
+  async: 1
+  poll: 0
+  when: upgrade_result is changed
+
+- name: Wait for the reboot to complete
+  wait_for_connection:
+    connect_timeout: 20
+    sleep: 5
+    delay: 15
+    timeout: 300
+  when: upgrade_result is changed
+
+- name: Restore the my.cnf file
+  synchronize:
+    src: /opt/my.cnf
+    dest: /etc/my.cnf
+  delegate_to: "{{ inventory_hostname }}"
+  when: "'_db' in configs_target"
+
+- name: Restore the logrotate file
+  synchronize:
+    src: /opt/mysql
+    dest: /etc/logrotate.d/mysql
+  delegate_to: "{{ inventory_hostname }}"
+  when: "'_db' in configs_target"
+
+- name: Restart the NTP service
+  systemd:
+    name: ntpd
+    state: restarted
+    enabled: yes
+
+- name: Restart the HTTP service
+  systemd:
+    name: httpd
+    state: restarted
+    enabled: yes
+  when: "'_web' in configs_target or '_java' in configs_target"
+
+- name: Restart the Tomcat service
+  systemd:
+    name: tomcat
+    state: restarted
+    enabled: yes
+  when: "'_java' in configs_target"
+
+- name: Restart the Varnish service
+  systemd:
+    name: varnish
+    state: restarted
+    enabled: yes
+  when: "'_varnish' in configs_target"
+
+- name: Restart the Haproxy service
+  systemd:
+    name: haproxy
+    state: restarted
+    enabled: yes
+  when: "'_haproxy' in configs_target"
+
+- name: Restart the Keepalived service
+  systemd:
+    name: keepalived
+    state: restarted
+    enabled: yes
+  when: "'_haproxy' in configs_target"
+
+- name: Restart the NFS service
+  systemd:
+    name: nfs-server
+    state: restarted
+  when: "'_nfs' in configs_target"
+
+- name: Start the mysqld service
+  systemd:
+    name: mysqld
+    state: started
+    enabled: yes
+  when: "'_db' in configs_target"
+
+- name: Upgrade MySQL Application
+  shell: /usr/bin/mysql_upgrade --force
+  args:
+    warn: False
+  when: "'_db' in configs_target"
+
+- name: Pause after each run
+  pause:
+    prompt: "\nVerify machine update was successful before continuing. Hit 'Enter' to continue"
+
+- name: Slack notification, server patching completed
+  slack:
+    token: "{{ slack_token }}"
+    channel: "{{ slack_channel }}"
+    msg: "{{ inventory_hostname }}: Server Patching Completed!"
+    username: "{{ slack_username }}"
+    link_names: 0
+    parse: 'none'
+    color: 'good'
+  delegate_to: localhost

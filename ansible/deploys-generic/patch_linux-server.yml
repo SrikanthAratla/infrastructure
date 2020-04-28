@@ -1,0 +1,25 @@
+---
+# Example:
+#    For Web Servers host group:      ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_web"}'
+#    For HAproxy Servers host group:  ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_haproxy"}'
+#    For Tomcat Servers host group:   ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_java"}'
+#    For Cache Servers host group:    ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_varnish"}'
+#    For NFS Servers host group:      ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_nfs"}'
+#    For Database Servers host group: ansible-playbook patch_linux-server.yml -e '{"configs_target":"prod_db"}'
+#
+# Adjust hosts before beginning
+#
+- name: Linux Patching (non-debian) from Local repository Server
+  hosts: "{{ configs_target | default('test_servers') }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  serial: 1
+  vars:
+    slack_token: 'your-slack-token'
+    slack_channel: '#your-slack-channel-name'
+    slack_username: 'your-slack-username'
+    local_repo_server: 'local_repo_server_hostname_or_IPADDR'
+
+  roles:
+    - patch_linux-server
