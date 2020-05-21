@@ -1,15 +1,4 @@
 ---
-- name: Slack notification, beginning server patching
-  slack:
-    token: "{{ slack_token }}"
-    channel: "{{ slack_channel }}"
-    msg: "{{ inventory_hostname }}: Beginning Server Patching"
-    username: "{{ slack_username }}"
-    link_names: 0
-    parse: 'none'
-    color: 'good'
-  delegate_to: localhost
-
 - name: Take backup of my.cnf file
   synchronize:
     src: /etc/my.cnf
@@ -82,7 +71,6 @@
     - centosplus
     - extras
     - epel
-    - ius
 
 - name: Create Percona repository (if required)
   yum_repository:
@@ -225,14 +213,3 @@
 - name: Pause after each run
   pause:
     prompt: "\nVerify machine update was successful before continuing. Hit 'Enter' to continue"
-
-- name: Slack notification, server patching completed
-  slack:
-    token: "{{ slack_token }}"
-    channel: "{{ slack_channel }}"
-    msg: "{{ inventory_hostname }}: Server Patching Completed!"
-    username: "{{ slack_username }}"
-    link_names: 0
-    parse: 'none'
-    color: 'good'
-  delegate_to: localhost

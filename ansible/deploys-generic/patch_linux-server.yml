@@ -16,10 +16,7 @@
   become_method: sudo
   serial: 1
   vars:
-    slack_token: 'your-slack-token'
-    slack_channel: '#your-slack-channel-name'
-    slack_username: 'your-slack-username'
-    local_repo_server: 'local_repo_server_hostname_or_IPADDR'
+    local_repo_server: 'hostname_or_IPADDR'        # Provide the Hostname or IP Address of your Internal Repository server
 
   roles:
     - patch_linux-server
