@@ -1,0 +1,122 @@
+---
+- name: Remove everything in yum-cache
+  shell: rm -rf /var/cache/yum/*
+  args:
+    warn: no
+
+- name: Upgrade all packages
+  yum:
+    name: '*'
+    state: latest
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+
+- name: Install epel-release for RHEL7
+  yum:
+    name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    state: present
+    update_cache: true
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: "ansible_distribution == 'RedHat'"
+
+- name: enable some missing repos if this is a RedHat server in AWS
+  shell: yum-config-manager --enable rhui-REGION-rhel-server-extras rhui-REGION-rhel-server-optional
+  when: "ansible_distribution == 'RedHat' and ansible_system_vendor is search('(Amazon|Xen)')"
+
+- name: Install epel-release
+  yum:
+    name: epel-release
+    state: present
+    update_cache: true
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: ansible_distribution == 'CentOS'
+
+- name: Installing additional sysadmin tools
+  yum:
+    pkg:
+      - lynx
+      - tree
+      - elinks
+      - links
+      - sysstat
+      - net-snmp
+      - policycoreutils-python
+      - screen
+      - lsof
+      - atop
+      - htop
+      - iptraf
+      - iftop
+      - glibc-common
+      - man-pages
+      - logwatch
+      - bind-utils
+      - nfs-utils
+      - moreutils
+      - psmisc
+      - ntp
+      - ntpdate
+      - yum-utils
+      - rpm-build
+      - rsync
+      - mlocate
+      - aspell
+      - aspell-en
+      - sssd
+      - realmd
+      - oddjob
+      - oddjob-mkhomedir
+      - adcli
+      - cifs-utils.x86_64
+      - samba-common
+      - samba-common-tools
+      - net-snmp-utils
+      - krb5-workstation
+      - vim-enhanced
+      - openldap-clients
+      - open-vm-tools
+      - net-tools
+      - unzip
+      - python-pip
+      - python-devel
+      - python-crypto
+      - python36u
+      - python36u-pip
+      - python36u-devel
+    state: present
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: ansible_distribution == 'CentOS'
+
+- name: update pip
+  pip:
+    name: pip
+    state: latest
+
+- name: update pip
+  pip:
+    name:
+      - pip
+    state: latest
+    executable: pip3.6
+
+- name: create common user to be used by ansible
+  include_tasks: manage_user.yml
+
+- name: Set the current timezone to US Central
+  timezone:
+    name: America/Chicago
+
+- name: execute AD integration configs
+  include_tasks: ad_integration.yml
+  when: "ansible_system_vendor is not search('(Amazon|Xen)')"

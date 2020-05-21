@@ -1,0 +1,33 @@
+---
+- name: create group
+  group:
+    name: ansiblemgr
+    state: present
+    gid: 985
+
+- name: create management user
+  user:
+    name: ansible
+    uid: 985
+    append: yes
+    group: ansiblemgr
+    home: /var/lib/ansiblemgr
+    shell: /bin/bash
+    password: "{{ ansible_user_hashkey }}"
+
+- name: create sudo file
+  copy:
+    dest: /etc/sudoers.d/ansible
+    content: 'ansible    ALL=(ALL:ALL) NOPASSWD: ALL'
+
+- name: set authorized key
+  authorized_key:
+    user: ansible
+    state: present
+    key: "{{ lookup('file', '/root/.ssh/id_rsa.pub') }}"
+
+- name: run selinux commands to ensure the correct context is set.
+  shell: "{{ item }}"
+  with_items:
+    - 'semanage fcontext -a -t ssh_home_t "/var/lib/ansiblemgr/.ssh(/.*)?"'
+    - 'restorecon -R /var/lib/ansiblemgr/.ssh'

@@ -1,0 +1,57 @@
+---
+- name: install pexpect using PIP
+  pip:
+    name: pexpect
+  register: task_result
+
+- name: reboot if a change is found
+  shell: "sleep 5 && reboot"
+  async: 1
+  poll: 0
+  when: task_result is changed
+
+- name: wait for the reboot to complete.
+  wait_for_connection:
+    connect_timeout: 20
+    sleep: 5
+    delay: 5
+    timeout: 300
+  when: task_result is changed
+
+- name: check if machine is bound
+  shell: "/usr/sbin/realm list | grep sssd"
+  register: realmd_bound
+  changed_when: false
+  ignore_errors: true
+
+- name: join system to AD
+  expect:
+    command: "/usr/sbin/realm join --user='{{ ad_name }}' '{{ domain }}'"
+    responses:
+      Password for *: "{{ ad_password }}"
+  retries: 3
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: realmd_bound is failed
+
+- name: set short user directory.
+  lineinfile:
+    path: /etc/sssd/sssd.conf
+    regexp: 'override_homedir = /home/%u'
+    insertafter: 'krb5_store_password_if_offline = True'
+    line: 'override_homedir = /home/%u'
+    
+- name: modify accessprovider.
+  lineinfile:
+    path: /etc/sssd/sssd.conf
+    regexp: 'access_provider = ad'
+    line: 'access_provider = simple'
+  
+- name: disable FQN for AD authentication
+  replace:
+    path: /etc/sssd/sssd.conf
+    regexp: "use_fully_qualified_names = True"
+    replace: "use_fully_qualified_names = False"
+  notify:
+    - restart sssd

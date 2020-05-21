@@ -1,0 +1,20 @@
+---
+# example:
+#     ansible-playbook common_packages.yml -e '{"cp_target":"prod_web","ad_name":"ad-name","domain":"domain-name"}'
+# Mention your AD account name and Domain name above.
+##
+# Generate the crypted hashkey from a plain text password using the command,
+# python -c 'import crypt,getpass; print(crypt.crypt(getpass.getpass(), crypt.mksalt(crypt.METHOD_SHA512)))'
+# Copy and Paste the generated hashkey below in front of "ansible_user_hashkey" (replace the sample).
+
+- name: Setting-up common packages in a Base server
+  hosts: "{{ cp_target | default('test_servers') }}"
+  remote_user: root
+  vars: 
+  ansible_user_hashkey: '$6$rJWnv8ULqlTo75ge$i8aXoToPYI51kxJOpR65VNdx56OXFYsGlk5sOiistkfKGT147ZzkzSyBisVgJMgzhq1Gm9DGI1VSyy8RDIDjt0'
+  vars_prompt:
+    - name: "ad_password"
+      prompt: "Enter Active Directory (AD) Password for '{{ ad_name }}'"
+      private: yes
+  roles:
+    - common_packages
