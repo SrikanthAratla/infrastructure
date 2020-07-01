@@ -75,7 +75,7 @@
 - name: Create Percona repository (if required)
   yum_repository:
     name: percona
-    description: XD Percona Repo
+    description: Percona Repo
     baseurl: http://{{ local_repo_server }}/repos/percona
     enabled: yes
     gpgcheck: no
